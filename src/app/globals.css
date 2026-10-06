@@ -1,0 +1,185 @@
+@import "tailwindcss";
+
+/* Headliner — tour poster / backstage tour book.
+   Paper, ink, one hot spot color. Hairline rules over boxes. */
+
+@theme {
+  --color-paper: oklch(94.5% 0.022 85);
+  --color-paper-deep: oklch(90% 0.032 82);
+  --color-ink: oklch(22% 0.015 60);
+  --color-ink-soft: oklch(43% 0.02 60);
+  --color-rule: oklch(22% 0.015 60 / 0.18);
+  --color-hot: oklch(62% 0.2 35);
+  --color-hot-deep: oklch(47% 0.17 33);
+  --color-overlap: oklch(45% 0.13 262);
+
+  --font-display: var(--font-big-shoulders), "Arial Narrow", sans-serif;
+  --font-serif: var(--font-newsreader), Georgia, serif;
+  --font-label: var(--font-archivo), "Helvetica Neue", sans-serif;
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  html {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    font-family: var(--font-serif);
+    font-size: 1.0625rem;
+    line-height: 1.55;
+    min-height: 100dvh;
+    /* uncoated paper: faint fibre noise, no images */
+    background-image:
+      radial-gradient(oklch(22% 0.015 60 / 0.035) 1px, transparent 1px),
+      radial-gradient(oklch(22% 0.015 60 / 0.025) 1px, transparent 1px);
+    background-size: 7px 7px, 11px 11px;
+    background-position: 0 0, 3px 5px;
+  }
+  ::selection {
+    background: var(--color-hot);
+    color: var(--color-paper);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-hot);
+    outline-offset: 3px;
+  }
+  button {
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+}
+
+@layer components {
+  /* Gig-poster headline: heavy condensed caps, tight leading, negative tracking as it grows */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 900;
+    text-transform: uppercase;
+    line-height: 0.86;
+    letter-spacing: -0.012em;
+  }
+  /* Small stamped labels: wide-tracked caps, tabular numbers */
+  .label {
+    font-family: var(--font-label);
+    font-weight: 600;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+  }
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+  .rule {
+    border-color: var(--color-rule);
+  }
+  /* Rubber-stamp marker, used for data-source disclosure */
+  .stamp {
+    font-family: var(--font-label);
+    font-weight: 700;
+    font-size: 0.68rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-hot-deep);
+    border: 2px solid currentColor;
+    padding: 0.2rem 0.5rem 0.15rem;
+    transform: rotate(-3deg);
+    mix-blend-mode: multiply;
+  }
+  /* Disclosure that animates height without animating height */
+  .reveal {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 360ms var(--ease-out-quint);
+  }
+  .reveal[data-open="true"] {
+    grid-template-rows: 1fr;
+  }
+  .reveal > * {
+    overflow: hidden;
+  }
+
+  /* Map stop pins (rendered as MapLibre HTML markers) */
+  .stop-pin {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    background: var(--color-ink);
+    color: var(--color-paper);
+    border: 2px solid var(--color-paper);
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 0.95rem;
+    line-height: 1;
+    opacity: 0;
+    transform: scale(0.6);
+    transition:
+      opacity 220ms var(--ease-out-quint),
+      transform 420ms var(--ease-out-expo),
+      background-color 160ms ease-out;
+  }
+  .stop-pin[data-shown="true"] {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .stop-pin[data-active="true"] {
+    background: var(--color-hot);
+    transform: scale(1.18);
+  }
+  .stop-pin:active {
+    transform: scale(0.94);
+  }
+  /* Before the paper overlay: tone the basemap toward newsprint */
+  .map-paper .maplibregl-canvas {
+    filter: sepia(0.18) saturate(0.85);
+  }
+  .map-paper .maplibregl-ctrl-attrib {
+    font-family: var(--font-label);
+    font-size: 0.65rem;
+    background: oklch(94.5% 0.022 85 / 0.85);
+  }
+
+  .live-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    background: var(--color-hot);
+    animation: live 1.2s ease-in-out infinite;
+  }
+  @keyframes live {
+    50% {
+      opacity: 0.25;
+    }
+  }
+
+  .enter {
+    animation: enter 520ms var(--ease-out-quint) both;
+  }
+  @keyframes enter {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+  .stop-pin,
+  .stop-pin[data-active="true"] {
+    transform: none;
+  }
+}

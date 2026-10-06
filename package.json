@@ -1,0 +1,37 @@
+{
+  "name": "headliner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A tour-routing agent built on Qloo's taste graph.",
+  "license": "MIT",
+  "scripts": {
+    "vendor:maplibre": "node scripts/copy-maplibre-worker.mjs",
+    "predev": "npm run vendor:maplibre",
+    "dev": "next dev --turbopack",
+    "prebuild": "npm run vendor:maplibre",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "spike:qloo": "node --env-file=.env.local scripts/qloo-spike.mjs"
+  },
+  "dependencies": {
+    "maplibre-gl": "^6.12.0",
+    "next": "^16.3.8",
+    "openai": "^7.28.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.8",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  }
+}
