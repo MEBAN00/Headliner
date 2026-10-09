@@ -38,6 +38,21 @@ Rules:
   but don't claim its capacity in the pitch.
 - Between tool calls, write at most one short sentence about what you're doing next. It is shown to the user live.`;
 
+/** OpenAI list prices in USD per 1M tokens (standard, short context), from openai.com/api/pricing, Oct 2026. */
+const PRICES: Record<string, { input: number; cached: number; output: number }> = {
+  "gpt-6-luna": { input: 0.1, cached: 0.01, output: 0.5 },
+  "gpt-6.1-sol": { input: 2, cached: 0.1, output: 10 },
+  "gpt-6-sol": { input: 2, cached: 0.2, output: 10 },
+  "gpt-6-astra": { input: 10, cached: 1, output: 50 },
+};
+
+/** Cached input is billed at the cached rate; reasoning tokens are already counted in output. */
+export function runCost(model: string, u: { input: number; cached: number; output: number }): number | undefined {
+  const p = PRICES[model];
+  if (!p) return undefined;
+  return ((u.input - u.cached) * p.input + u.cached * p.cached + u.output * p.output) / 1_000_000;
+}
+
 const tools: OpenAI.Responses.FunctionTool[] = TOOLS.map((t) => ({
   type: "function",
   name: t.name,
@@ -72,9 +87,10 @@ export async function runOpenAI(session: TourSession) {
   try {
     await plan();
   } finally {
+    const cost = runCost(MODEL, usage);
     console.info(
       `[headliner] ${MODEL} · ${request.artist} · ${usage.calls} calls · input ${usage.input} (cached ${usage.cached}) · ` +
-        `output ${usage.output} (reasoning ${usage.reasoning})`,
+        `output ${usage.output} (reasoning ${usage.reasoning}) · ${cost === undefined ? "cost unknown for this model" : `≈ $${cost.toFixed(4)}`}`,
     );
   }
 

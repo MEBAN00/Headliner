@@ -63,17 +63,10 @@ Open http://localhost:3000.
 | `QLOO_API_KEY` | Your Qloo hackathon key |
 | `QLOO_API_URL` | `https://hackathon.api.qloo.com` |
 | `OPENAI_API_KEY` | Your OpenAI key |
-| `OPENAI_MODEL` | `gpt-6.1-sol` for the judged demo (`gpt-6-luna` is cheaper for testing) |
+| `OPENAI_MODEL` | `gpt-6-luna` |
 | `OPENAI_REASONING_EFFORT` | `medium` |
 | `TICKETMASTER_API_KEY` | Your Ticketmaster Consumer Key |
 | `RUNS_PER_10_MIN` | Optional. Tour runs allowed per visitor per 10 minutes (default 6) |
-
-Notes:
-
-- The planner route streams for 1–2 minutes and declares `maxDuration = 300`, the Hobby plan ceiling.
-- On Vercel the response cache lives in the function's temp directory, so it lasts while an instance is
-  warm. Run your demo acts once after each deploy so judges hit a warm cache.
-- The per-visitor run limit is in memory per instance: a guardrail for API spend, not a security boundary.
 
 ## Scripts
 
