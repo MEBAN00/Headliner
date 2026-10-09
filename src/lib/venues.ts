@@ -16,6 +16,12 @@ type TmVenue = {
   url?: string;
   address?: { line1?: string };
   city?: { name?: string };
+  location?: { latitude?: string; longitude?: string };
+};
+
+const coord = (v: string | undefined) => {
+  const n = Number(v);
+  return v !== undefined && Number.isFinite(n) ? n : undefined;
 };
 
 export async function findVenues(marketId: string, tier: VenueTier, take = 3): Promise<Venue[]> {
@@ -46,6 +52,8 @@ export async function findVenues(marketId: string, tier: VenueTier, take = 3): P
     sizeMatch: v.sizeMatch,
     address: v.address?.line1,
     url: v.url,
+    lat: coord(v.location?.latitude),
+    lng: coord(v.location?.longitude),
   }));
 }
 

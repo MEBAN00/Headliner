@@ -98,11 +98,11 @@ function PitchStub({ stop }: { stop: TourStop }) {
 
   return (
     <figure className="relative border border-dashed border-ink/40 bg-paper-deep/50 p-4">
-      <figcaption className="label mb-2 flex items-center justify-between text-ink-soft">
+      <figcaption className="label mb-2 flex items-start justify-between gap-4 text-ink-soft">
         <span>
           Pitch · {stop.venue?.name ?? "venue"} · {stop.tier} {TIER_CAPACITY[stop.tier]}
         </span>
-        <button type="button" onClick={copy} className="text-ink hover:text-hot-deep" aria-live="polite">
+        <button type="button" onClick={copy} className="shrink-0 text-ink hover:text-hot-deep" aria-live="polite">
           {copied ? "Copied" : "Copy"}
         </button>
       </figcaption>

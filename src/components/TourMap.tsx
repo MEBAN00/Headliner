@@ -11,6 +11,12 @@ import type { HeatCell, Route } from "@/lib/types";
 const PAPER = "#f2ebdc";
 const WATER = "#e2d6bf";
 const INK = "#251e18";
+const ROAD = "#dccfb6";
+const BUILDING = "#e8dcc4";
+const HOT = "#e0502a";
+
+/** Where the map flies when a stop is opened: the venue if we know where it is, else the city. */
+export type MapFocus = { id: string; lat: number; lng: number; exact: boolean };
 
 const STYLE_URL = "https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json";
 // Served from /public by scripts/copy-maplibre-worker.mjs (the bundled default URL breaks).
@@ -21,13 +27,17 @@ type Props = {
   cells: HeatCell[];
   route?: Route;
   activeMarketId?: string;
+  focus?: MapFocus;
   onSelectStop?: (marketId: string) => void;
 };
 
 const prefersReducedMotion = () =>
   typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** Strip the basemap down to a printed look: paper land, toned water, faint borders, no roads or labels. */
+/**
+ * Strip the basemap down to a printed look: paper land, toned water, faint borders, no labels.
+ * Roads stay invisible at tour scale and fade in only when a stop is opened up close.
+ */
 function inkTheBasemap(map: MLMap) {
   for (const layer of map.getStyle().layers ?? []) {
     const { id, type } = layer;
@@ -37,11 +47,43 @@ function inkTheBasemap(map: MLMap) {
       else if (type === "line" && /boundary|admin/.test(id)) {
         map.setPaintProperty(id, "line-color", INK);
         map.setPaintProperty(id, "line-opacity", /country/.test(id) ? 0.45 : 0.18);
+      } else if (type === "line" && /road|highway|tunnel|bridge|street|path|rail/.test(id)) {
+        map.setPaintProperty(id, "line-color", ROAD);
+        map.setPaintProperty(id, "line-opacity", ["interpolate", ["linear"], ["zoom"], 11, 0, 13.5, 0.85]);
       } else map.setLayoutProperty(id, "visibility", "none");
     } catch {
       // layer without that property — leave it
     }
   }
+}
+
+/** Rough centre of a footprint, for picking the building nearest the venue's coordinates. */
+function centroid(geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon): [number, number] {
+  const ring = geometry.type === "Polygon" ? geometry.coordinates[0] : geometry.coordinates[0][0];
+  const [x, y] = ring.reduce(([sx, sy], [px, py]) => [sx + px, sy + py], [0, 0]);
+  return [x / ring.length, y / ring.length];
+}
+
+/** OpenStreetMap building footprints from the same tiles, extruded by their height up close. */
+function addBuildings(map: MLMap, beforeId: string) {
+  map.addLayer(
+    {
+      id: "buildings-3d",
+      type: "fill-extrusion",
+      source: "carto",
+      "source-layer": "building",
+      minzoom: 14,
+      filter: ["!=", ["get", "hide_3d"], true],
+      paint: {
+        "fill-extrusion-color": BUILDING,
+        "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14, 0, 15.5, ["coalesce", ["get", "render_height"], 8]],
+        "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
+        "fill-extrusion-opacity": 0.92,
+        "fill-extrusion-vertical-gradient": true,
+      },
+    },
+    beforeId,
+  );
 }
 
 function heatGeoJSON(cells: HeatCell[]): FeatureCollection {
@@ -62,11 +104,13 @@ const lineGeoJSON = (coords: [number, number][]): Feature => ({
   geometry: { type: "LineString", coordinates: coords },
 });
 
-export default function TourMap({ cells, route, activeMarketId, onSelectStop }: Props) {
+export default function TourMap({ cells, route, activeMarketId, focus, onSelectStop }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const markersRef = useRef<Map<string, { marker: maplibregl.Marker; el: HTMLButtonElement }>>(new Map());
   const onSelectRef = useRef(onSelectStop);
+  const venueMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const wasFocusedRef = useRef(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -102,7 +146,8 @@ export default function TourMap({ cells, route, activeMarketId, onSelectStop }: 
           // Qloo cells are geohash-4 (~0.35° × 0.18°). Doubling the radius per zoom level keeps it ~2.5
           // cells wide at every zoom, so neighbouring columns blend instead of showing as stripes.
           "heatmap-radius": ["interpolate", ["exponential", 2], ["zoom"], 3, 5, 9, 320],
-          "heatmap-opacity": 0.88,
+          // Fans per city, not per block: the heat fades out as you zoom into a venue.
+          "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 9, 0.88, 12, 0],
           "heatmap-color": [
             "interpolate",
             ["linear"],
@@ -130,6 +175,22 @@ export default function TourMap({ cells, route, activeMarketId, onSelectStop }: 
         layout: { "line-cap": "round", "line-join": "round" },
         paint: { "line-color": INK, "line-width": 2.5 },
       });
+      addBuildings(map, "heat");
+      map.addSource("venue-building", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      map.addLayer(
+        {
+          id: "venue-building",
+          type: "fill-extrusion",
+          source: "venue-building",
+          paint: {
+            "fill-extrusion-color": HOT,
+            "fill-extrusion-height": ["coalesce", ["get", "render_height"], 12],
+            "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
+            "fill-extrusion-opacity": 0.95,
+          },
+        },
+        "heat",
+      );
       setReady(true);
     });
 
@@ -221,6 +282,72 @@ export default function TourMap({ cells, route, activeMarketId, onSelectStop }: 
       el.setAttribute("aria-pressed", String(id === activeMarketId));
     }
   }, [activeMarketId, route]);
+
+  // Opening a stop flies down to the venue in 3D; closing it returns to the whole route.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map) return;
+    const reduced = prefersReducedMotion();
+    venueMarkerRef.current?.remove();
+    venueMarkerRef.current = null;
+    const venueSource = map.getSource("venue-building") as GeoJSONSource;
+    venueSource.setData({ type: "FeatureCollection", features: [] });
+
+    if (focus) {
+      wasFocusedRef.current = true;
+      map.dragRotate.enable();
+      map.touchZoomRotate.enableRotation();
+      const camera = { center: [focus.lng, focus.lat] as [number, number], zoom: focus.exact ? 16.4 : 13.5, pitch: 62, bearing: -28 };
+      if (reduced) map.jumpTo(camera);
+      else map.flyTo({ ...camera, duration: 2600, curve: 1.6, essential: true });
+
+      const pin = document.createElement("div");
+      pin.setAttribute("aria-hidden", "true");
+      pin.style.cssText = `width:18px;height:18px;border-radius:999px;background:${HOT};border:3px solid ${PAPER};box-shadow:0 0 0 6px rgba(224,80,42,.25)`;
+      venueMarkerRef.current = new maplibregl.Marker({ element: pin }).setLngLat([focus.lng, focus.lat]).addTo(map);
+
+      // Once the camera settles, light up the building the venue sits in (nearest footprint within ~25px).
+      const highlight = () => {
+        if (!focus.exact) return;
+        const at = map.project([focus.lng, focus.lat]);
+        const box: [[number, number], [number, number]] = [[at.x - 25, at.y - 25], [at.x + 25, at.y + 25]];
+        const hits = map.queryRenderedFeatures(box, { layers: ["buildings-3d"] });
+        if (!hits.length) return;
+        const nearest = hits
+          .map((f) => {
+            const c = map.project(centroid(f.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon));
+            return { f, d: (c.x - at.x) ** 2 + (c.y - at.y) ** 2 };
+          })
+          .sort((a, b) => a.d - b.d)[0].f;
+        // Rendered features are backed by tile internals the worker can't serialise; copy to plain JSON.
+        const geometry = JSON.parse(JSON.stringify(nearest.geometry)) as GeoJSON.Geometry;
+        const { render_height, render_min_height } = nearest.properties ?? {};
+        venueSource.setData({
+          type: "FeatureCollection",
+          features: [{ type: "Feature", geometry, properties: { render_height, render_min_height } }],
+        });
+      };
+      map.once("idle", highlight);
+      return () => {
+        map.off("idle", highlight);
+      };
+    }
+
+    if (!wasFocusedRef.current) return;
+    wasFocusedRef.current = false;
+    map.dragRotate.disable();
+    map.touchZoomRotate.disableRotation();
+    if (!route?.stops.length) return;
+    const bounds = new maplibregl.LngLatBounds();
+    route.stops.forEach((s) => bounds.extend([s.lng, s.lat]));
+    map.fitBounds(bounds, {
+      padding: { top: 70, bottom: 70, left: 60, right: 60 },
+      maxZoom: 6,
+      pitch: 0,
+      bearing: 0,
+      duration: reduced ? 0 : 1800,
+    });
+  }, [focus, ready, route]);
 
   // MapLibre sets position: relative on its container, so size it from a positioned wrapper.
   return (

@@ -6,6 +6,7 @@ const display = Big_Shoulders({
   subsets: ["latin"],
   weight: ["700", "800", "900"],
   variable: "--font-big-shoulders",
+  adjustFontFallback: false, // no metrics published for this face; skip the generated fallback
 });
 const serif = Newsreader({
   subsets: ["latin"],

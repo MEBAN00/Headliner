@@ -1,9 +1,10 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatListeners } from "@/lib/tiers";
-import type { ActScale, DataMode, TourRequest } from "@/lib/types";
+import type { ActScale, DataMode, TourRequest, TourStop } from "@/lib/types";
+import type { MapFocus } from "./TourMap";
 import { CrewNotes } from "./CrewNotes";
 import { RunForm } from "./RunForm";
 import { SetList } from "./SetList";
@@ -17,12 +18,38 @@ const TourMap = dynamic(() => import("./TourMap"), {
 
 export function Headliner() {
   const { state, start, stop } = useTourRun();
+  // The map's 3D focus and the open set-list row are separate: tapping a pin on a phone shouldn't
+  // also expand a row and scroll the page away from the map.
   const [activeMarketId, setActiveMarketId] = useState<string>();
+  const [openMarketId, setOpenMarketId] = useState<string>();
   const [lastRequest, setLastRequest] = useState<TourRequest>();
   const running = state.status === "running";
 
+  const activeStop = state.plan?.stops.find((s) => s.marketId === activeMarketId);
+  const focus = useMemo<MapFocus | undefined>(() => {
+    if (!activeStop) return undefined;
+    const v = activeStop.venue;
+    const exact = v?.lat !== undefined && v?.lng !== undefined;
+    return { id: activeStop.marketId, lat: exact ? v!.lat! : activeStop.lat, lng: exact ? v!.lng! : activeStop.lng, exact };
+  }, [activeStop]);
+
+  // Escape leaves the 3D view.
+  useEffect(() => {
+    if (!activeMarketId) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setActiveMarketId(undefined);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeMarketId]);
+
+  /** From the list: open the row and show the venue on the map. Tapping the open row closes both. */
+  const selectFromList = (marketId: string | undefined) => {
+    setOpenMarketId(marketId);
+    setActiveMarketId(marketId);
+  };
+
   const run = (request: TourRequest) => {
     setActiveMarketId(undefined);
+    setOpenMarketId(undefined);
     setLastRequest(request);
     start(request);
   };
@@ -64,7 +91,7 @@ export function Headliner() {
                 Rank is where the city places among {state.plan.artist.name}&rsquo;s {state.plan.marketCount} fan
                 markets in Qloo&rsquo;s taste data. #1 is their strongest.
               </p>
-              <SetList stops={state.plan.stops} activeMarketId={activeMarketId} onSelect={setActiveMarketId} />
+              <SetList stops={state.plan.stops} activeMarketId={openMarketId} onSelect={selectFromList} />
             </section>
           </div>
         )}
@@ -81,9 +108,19 @@ export function Headliner() {
           cells={state.cells}
           route={state.route}
           activeMarketId={activeMarketId}
+          focus={focus}
           onSelectStop={setActiveMarketId}
         />
-        <MapLegend idle={state.status === "idle"} hasHeat={state.cells.length > 0} />
+        {activeStop ? (
+          <VenueCard
+            stop={activeStop}
+            exact={Boolean(focus?.exact)}
+            onBack={() => setActiveMarketId(undefined)}
+            onDetails={() => setOpenMarketId(activeStop.marketId)}
+          />
+        ) : (
+          <MapLegend idle={state.status === "idle"} hasHeat={state.cells.length > 0} />
+        )}
       </aside>
     </div>
   );
@@ -183,6 +220,38 @@ function ScaleLine({ scale }: { scale: ActScale }) {
         </>
       )}
     </p>
+  );
+}
+
+/** Shown while the map is flown down to one stop. */
+type VenueCardProps = { stop: TourStop; exact: boolean; onBack: () => void; onDetails: () => void };
+
+function VenueCard({ stop, exact, onBack, onDetails }: VenueCardProps) {
+  return (
+    <div className="enter absolute left-4 top-4 max-w-[min(22rem,calc(100%-2rem))] border-2 border-ink bg-paper/95 p-4 sm:left-6 sm:top-6">
+      <p className="label text-ink-soft">
+        Day {stop.day} · {stop.name}
+      </p>
+      <p className="display mt-1 text-[1.9rem]">{stop.venue?.name ?? stop.name}</p>
+      <p className="label mt-1 text-ink-soft">
+        {stop.tier} room{stop.venue?.address ? ` · ${stop.venue.address}` : ""}
+      </p>
+      <p className="mt-2 text-sm text-ink-soft">
+        {exact ? "Drag to look around the block." : "Exact venue location unavailable, so showing the city."}
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="label bg-ink px-3 py-2 text-paper transition-transform duration-100 active:scale-[0.97]"
+        >
+          ← Back to the tour
+        </button>
+        <button type="button" onClick={onDetails} className="label py-2 underline decoration-ink/30 underline-offset-4 hover:decoration-ink">
+          See details
+        </button>
+      </div>
+    </div>
   );
 }
 

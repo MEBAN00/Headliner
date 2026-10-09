@@ -30,7 +30,8 @@ Design rules:
 
 - **The model chooses, code computes.** Distances, show days and demand scores come from code and
   Qloo; the agent can only quote them.
-- **Everything is cached** (`./.cache`) so demos are repeatable and rate limits are respected.
+- **Everything is cached** (`./.cache` locally, the temp dir on Vercel) so demos are repeatable and
+  rate limits are respected.
 - **Every source has a mock.** With no keys at all, the app runs end to end on deterministic mock
   data and says so on screen.
 
@@ -50,16 +51,36 @@ Open http://localhost:3000.
 | `OPENAI_API_KEY` | Scripted planner runs the same tools |
 | `TICKETMASTER_API_KEY` | Mock venue names |
 
+## Deploy to Vercel
+
+1. Import the GitHub repo at [vercel.com/new](https://vercel.com/new). Vercel detects Next.js; keep the
+   default build settings (`npm run build` also copies MapLibre's web worker into `public/`).
+2. Add the environment variables below under **Settings → Environment Variables** (Production and
+   Preview), then deploy.
+
+| Variable | Value |
+| --- | --- |
+| `QLOO_API_KEY` | Your Qloo hackathon key |
+| `QLOO_API_URL` | `https://hackathon.api.qloo.com` |
+| `OPENAI_API_KEY` | Your OpenAI key |
+| `OPENAI_MODEL` | `gpt-6.1-sol` for the judged demo (`gpt-6-luna` is cheaper for testing) |
+| `OPENAI_REASONING_EFFORT` | `medium` |
+| `TICKETMASTER_API_KEY` | Your Ticketmaster Consumer Key |
+| `RUNS_PER_10_MIN` | Optional. Tour runs allowed per visitor per 10 minutes (default 6) |
+
+Notes:
+
+- The planner route streams for 1–2 minutes and declares `maxDuration = 300`, the Hobby plan ceiling.
+- On Vercel the response cache lives in the function's temp directory, so it lasts while an instance is
+  warm. Run your demo acts once after each deploy so judges hit a warm cache.
+- The per-visitor run limit is in memory per instance: a guardrail for API spend, not a security boundary.
+
 ## Scripts
 
 - `npm run dev` — dev server
-- `npm test` — unit tests (route optimizer)
+- `npm run build` / `npm start` — production build and server
+- `npm test` — unit tests (routing, sizing, matching, rate limiting)
 - `npm run typecheck` / `npm run lint`
-
-## Status
-
-Scaffold. Qloo response parsing in `src/lib/qloo/client.ts` is marked `VERIFY` where field paths
-need confirming against the hackathon API.
 
 ## License
 

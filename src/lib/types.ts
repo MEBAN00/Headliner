@@ -55,6 +55,8 @@ export type Venue = {
   sizeMatch: "exact" | "unverified" | "closest";
   address?: string;
   url?: string;
+  lat?: number; // from Ticketmaster; missing for mock venues
+  lng?: number;
 };
 
 export type RouteStop = LatLng & {

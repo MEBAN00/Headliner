@@ -1,9 +1,14 @@
 import { runAgent } from "@/lib/agent";
+import { clientKey, createLimiter } from "@/lib/rateLimit";
 import type { AgentEvent, TourRequest } from "@/lib/types";
 
 export const runtime = "nodejs";
 // A full planner run makes ~10 tool round trips; give it room. Check your Vercel plan's ceiling.
 export const maxDuration = 300;
+
+// Each run spends Qloo quota and OpenAI tokens; a public demo needs a ceiling per visitor.
+const RUNS_PER_WINDOW = Number(process.env.RUNS_PER_10_MIN ?? 6);
+const limiter = createLimiter(RUNS_PER_WINDOW, 10 * 60_000);
 
 function parseRequest(body: unknown): TourRequest | string {
   if (!body || typeof body !== "object") return "Expected a JSON body.";
@@ -22,6 +27,15 @@ function parseRequest(body: unknown): TourRequest | string {
 export async function POST(req: Request) {
   const parsed = parseRequest(await req.json().catch(() => null));
   if (typeof parsed === "string") return Response.json({ error: parsed }, { status: 400 });
+
+  const allowed = limiter.allow(clientKey(req));
+  if (!allowed.ok) {
+    const minutes = Math.ceil(allowed.retryAfterSec / 60);
+    return Response.json(
+      { error: `That's a lot of tours in a few minutes. Try again in about ${minutes} minute${minutes === 1 ? "" : "s"}.` },
+      { status: 429, headers: { "retry-after": String(allowed.retryAfterSec) } },
+    );
+  }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
